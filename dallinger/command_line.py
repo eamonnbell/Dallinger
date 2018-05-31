@@ -78,6 +78,63 @@ def error(msg, delay=0.5, chevrons=True, verbose=True):
         time.sleep(delay)
 
 
+class CLIPrinter(object):
+
+    std_delay = 0.5
+    heading_mark = '\n❯❯ '
+
+    def __init__(self, out=click):
+        self._out = out
+
+    def log(self, msg):
+        """Print msg to the screen, then sleep for a moment."""
+        self._out.echo(msg)
+        time.sleep(self.std_delay)
+
+    def log_fast(self, msg):
+        """Print a message to the screen and return immediately."""
+        self._out.echo(msg)
+
+    def heading(self, msg):
+        """Print a heading to the screen, then sleep for a moment."""
+        self.log(self.heading_mark + msg)
+
+    def error(self, msg):
+        """Print an error to the screen using stderr."""
+        self._out.secho(msg, err=True, fg='red')
+
+    def error_heading(self, msg):
+        """Print an error heading to the screen using stderr."""
+        self.error(self.heading_mark + msg)
+
+
+class SilentCLIPrinter(object):
+
+    def __init__(self, out=click):
+        self._out = out
+
+    def log(self, msg):
+        pass
+
+    def log_fast(self, msg):
+        pass
+
+    def heading(self, msg):
+        pass
+
+    def error(self, msg):
+        pass
+
+    def error_heading(self, msg):
+        pass
+
+
+def get_cli_printer(verbose=True):
+    if verbose:
+        return CLIPrinter()
+    return SilentCLIPrinter()
+
+
 def report_idle_after(seconds):
     """Report_idle_after after certain number of seconds."""
     def decorator(func):
@@ -86,6 +143,7 @@ def report_idle_after(seconds):
                 try:
                     config = get_config()
                     config.load()
+                    cli = get_cli_printer()
                     heroku_config = {
                         "contact_email_on_error": config["contact_email_on_error"],
                         "dallinger_email_username": config["dallinger_email_address"],
@@ -96,10 +154,10 @@ def report_idle_after(seconds):
                     email = EmailingHITMessager(when=datetime.now(), assignment_id=None,
                                                 hit_duration=seconds, time_active=seconds,
                                                 config=heroku_config, app_id=app_id)
-                    log("Sending email...")
+                    cli.log("Sending email...")
                     email.send_idle_experiment()
                 except KeyError:
-                    log("Config keys not set to send emails...")
+                    cli.log("Config keys not set to send emails...")
 
             signal.signal(signal.SIGALRM, _handle_timeout)
             signal.alarm(seconds)
@@ -127,6 +185,7 @@ def verify_id(ctx, param, app):
 def verify_package(verbose=True):
     """Ensure the package has a config file and a valid experiment file."""
     is_passing = True
+    cli = get_cli_printer(verbose)
 
     # Check for existence of required files.
     required_files = [
@@ -136,9 +195,9 @@ def verify_package(verbose=True):
 
     for f in required_files:
         if os.path.exists(f):
-            log("✓ {} is PRESENT".format(f), chevrons=False, verbose=verbose)
+            cli.log("✓ {} is PRESENT".format(f))
         else:
-            log("✗ {} is MISSING".format(f), chevrons=False, verbose=verbose)
+            cli.log("✗ {} is MISSING".format(f))
             is_passing = False
 
     # Check the experiment file.
@@ -163,15 +222,12 @@ def verify_package(verbose=True):
                 if (c[1].__bases__[0].__name__ in "Experiment")]
 
         if len(exps) == 0:
-            log("✗ experiment.py does not define an experiment class.",
-                delay=0, chevrons=False, verbose=verbose)
+            cli.log_fast("✗ experiment.py does not define an experiment class.")
             is_passing = False
         elif len(exps) == 1:
-            log("✓ experiment.py defines 1 experiment",
-                delay=0, chevrons=False, verbose=verbose)
+            cli.log_fast("✓ experiment.py defines 1 experiment")
         else:
-            log("✗ experiment.py defines more than one experiment class.",
-                delay=0, chevrons=False, verbose=verbose)
+            cli.log_fast("✗ experiment.py defines more than one experiment class.")
 
     config = get_config()
     if not config.ready:
@@ -182,13 +238,14 @@ def verify_package(verbose=True):
     dollarFormat = "{:.2f}".format(base_pay)
 
     if base_pay <= 0:
-        log("✗ base_payment must be positive value in config.txt.",
-            delay=0, chevrons=False, verbose=verbose)
+        cli.log_fast("✗ base_payment must be positive value in config.txt.")
         is_passing = False
 
     if float(dollarFormat) != float(base_pay):
-        log("✗ base_payment must be in [dollars].[cents] format in config.txt. Try changing "
-            "{0} to {1}.".format(base_pay, dollarFormat), delay=0, chevrons=False, verbose=verbose)
+        cli.log_fast(
+            "✗ base_payment must be in [dollars].[cents] format in config.txt. Try changing "
+            "{0} to {1}.".format(base_pay, dollarFormat)
+        )
         is_passing = False
 
     # Check front-end files do not exist
@@ -208,10 +265,11 @@ def verify_package(verbose=True):
 
     for f in files:
         if os.path.exists(f):
-            log("✗ {} OVERWRITES shared frontend files inserted at run-time".format(f),
-                delay=0, chevrons=False, verbose=verbose)
+            cli.log_fast(
+                "✗ {} OVERWRITES shared frontend files inserted at run-time".format(f)
+            )
 
-    log("✓ no file conflicts", delay=0, chevrons=False, verbose=verbose)
+    cli.log_fast("✓ no file conflicts")
 
     return is_passing
 
@@ -234,13 +292,13 @@ def setup():
     # Create the Dallinger config file if it does not already exist.
     config_name = ".dallingerconfig"
     config_path = os.path.join(os.path.expanduser("~"), config_name)
+    cli = get_cli_printer()
 
     if os.path.isfile(config_path):
-        log("Dallinger config file already exists.", chevrons=False)
+        cli.log("Dallinger config file already exists.")
 
     else:
-        log("Creating Dallinger config file at ~/.dallingerconfig...",
-            chevrons=False)
+        cli.log("Creating Dallinger config file at ~/.dallingerconfig...")
         src = os.path.join(
             os.path.dirname(os.path.realpath(__file__)),
             "default_configs",
@@ -287,8 +345,9 @@ def get_summary(app):
 @click.option('--proxy', default=None, help='Alternate port when opening browser windows')
 def debug(verbose, bot, proxy, exp_config=None):
     """Run the experiment locally."""
+    cli = get_cli_printer(verbose)
     debugger = DebugDeployment(Output(log=log, error=error), verbose, bot, proxy, exp_config)
-    log(header, chevrons=False)
+    cli.log(header)
     debugger.run()
 
 
@@ -311,7 +370,7 @@ def sandbox(verbose, app):
     """Deploy app using Heroku to the MTurk Sandbox."""
     if app:
         verify_id(None, None, app)
-    log(header, chevrons=False)
+    get_cli_printer().log(header)
     _deploy_in_mode('sandbox', app=app, verbose=verbose, log=log)
 
 
@@ -323,7 +382,7 @@ def deploy(verbose, app):
     """Deploy app using Heroku to MTurk."""
     if app:
         verify_id(None, None, app)
-    log(header, chevrons=False)
+    get_cli_printer().log(header)
     _deploy_in_mode('live', app=app, verbose=verbose, log=log)
 
 
@@ -427,15 +486,16 @@ def revoke(workers, qualification, by_name, reason, sandbox):
 @click.option('--app', default=None, callback=verify_id, help='Experiment id')
 def hibernate(app):
     """Pause an experiment and remove costly resources."""
-    log("The database backup URL is...")
+    cli = get_cli_printer()
+    cli.heading("The database backup URL is...")
     backup_url = data.backup(app)
-    log(backup_url)
+    cli.log(backup_url)
 
-    log("Scaling down the web servers...")
+    cli.heading("Scaling down the web servers...")
     heroku_app = HerokuApp(app)
     heroku_app.scale_down_dynos()
 
-    log("Removing addons...")
+    cli.heading("Removing addons...")
 
     addons = [
         "heroku-postgresql",
@@ -459,8 +519,8 @@ def _current_hits(service, app):
 def hits(app, sandbox):
     """List hits for an experiment id."""
     hit_list = list(_current_hits(_mturk_service_from_config(sandbox), app))
-    out = Output(log=log, error=error)
-    out.log('Found {} hits for this experiment id: {}'.format(
+    cli = get_cli_printer()
+    cli.heading('Found {} hits for this experiment id: {}'.format(
         len(hit_list), ', '.join(h['id'] for h in hit_list)
     ))
 
@@ -482,17 +542,17 @@ def expire(app, sandbox):
             success.append(hit_id)
         except MTurkServiceException:
             failures.append(hit_id)
-    out = Output(log=log, error=error)
+    cli = get_cli_printer()
     if success:
-        out.log('Expired {} hits: {}'.format(len(success), ', '.join(success)))
+        cli.heading('Expired {} hits: {}'.format(len(success), ', '.join(success)))
     if failures:
-        out.log('Could not expire {} hits: {}'.format(
+        cli.heading('Could not expire {} hits: {}'.format(
             len(failures), ', '.join(failures)
         ))
     if not success and not failures:
-        out.log('No hits found for this application.')
+        cli.heading('No hits found for this application.')
         if not sandbox:
-            out.log(
+            cli.log(
                 'If this experiment was run in the MTurk sandbox, use: '
                 '`dallinger expire --sandbox --app {}`'.format(app)
             )
@@ -523,6 +583,7 @@ def destroy(ctx, app, expire_hit, sandbox):
 def awaken(app, databaseurl):
     """Restore the database from a given url."""
     id = app
+    cli = get_cli_printer()
     config = get_config()
     config.load()
 
@@ -543,7 +604,7 @@ def awaken(app, databaseurl):
     heroku_app.restore(url)
 
     # Scale up the dynos.
-    log("Scaling up the dynos...")
+    cli.heading("Scaling up the dynos...")
     size = config.get("dyno_type")
     for process in ["web", "worker"]:
         qty = config.get("num_dynos_" + process)
@@ -560,7 +621,7 @@ def awaken(app, databaseurl):
               help='Scrub PII')
 def export(app, local, no_scrub):
     """Export the data."""
-    log(header, chevrons=False)
+    get_cli_printer().log(header)
     data.export(str(app), local=local, scrub_pii=(not no_scrub))
 
 
@@ -576,7 +637,7 @@ def load(app, verbose, replay, exp_config=None):
         exp_config = exp_config or {}
         exp_config['replay'] = True
     loader = ReplayDeployment(app, Output(log=log, error=error), verbose, exp_config)
-    log(header, chevrons=False)
+    get_cli_printer().log(header)
     loader.run()
 
 
@@ -629,7 +690,7 @@ def bot(app, debug):
     """Run the experiment bot."""
     if debug is None:
         verify_id(None, None, app)
-    log(header, chevrons=False)
+    get_cli_printer().log(header)
     (id, tmp) = setup_experiment(log)
 
     if debug:
@@ -656,7 +717,7 @@ def verify():
 @dallinger.command()
 def rq_worker():
     """Start an rq worker in the context of dallinger."""
-    log(header, chevrons=False)
+    get_cli_printer().log(header)
     setup_experiment(log)
     with Connection(conn):
         # right now we care about low queue for bots
