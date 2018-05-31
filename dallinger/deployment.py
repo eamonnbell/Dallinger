@@ -187,16 +187,6 @@ def setup_experiment(log, header, debug=True, app=None, exp_config=None):
     return (public_id, dst)
 
 
-def verify_id(app_id):
-    """Verify the experiment id."""
-    if app_id is None:
-        raise TypeError("Select an experiment using the --app flag.")
-    elif app_id[0:5] == "dlgr-":
-        raise ValueError("The --app flag requires the full "
-                         "UUID beginning with {}-...".format(app_id[5:13]))
-    return app_id
-
-
 def _handle_launch_data(url, error):
     launch_request = requests.post(url)
     try:
@@ -341,9 +331,6 @@ def deploy_sandbox_shared_setup(log, verbose=True, app=None, exp_config=None):
 
 def _deploy_in_mode(mode, app, verbose, log):
     # Load configuration.
-    if app:
-        verify_id(None, None, app)
-
     config = get_config()
     config.load()
 
